@@ -127,8 +127,23 @@ function unlockSubmitted(ev) {
   const waiters = gateWaiters;
   gateWaiters = [];
   for (const w of waiters) w();
+  // Nobody was awaiting the gate = this is a RE-unlock (the stored key was
+  // rejected after boot had already run). The one-shot boot loads failed
+  // with the old key and would otherwise stay empty until a manual reload —
+  // run them again with the fresh key.
+  if (!waiters.length) retryAfterUnlock();
 }
 if (gateEls.form) gateEls.form.addEventListener("submit", unlockSubmitted);
+
+// A re-unlock after the server rejected the stored key: refresh the task
+// badge, restore the thread if it never loaded, and reload whichever view
+// is on screen so the page recovers without a reload.
+function retryAfterUnlock() {
+  refreshMemoryCount();
+  if (!history.length) restoreThread();
+  if (ui.memoryOpen()) reloadMemoryView();
+  if (ui.els.html && ui.els.html.getAttribute("data-view") === "notes") notes.openNotesView();
+}
 
 // The server rejected the key: clear it and ask again.
 function onAuthRejected() {
@@ -144,21 +159,37 @@ function onAuthRejected() {
 // Sniff backend replies for the auth rejection AT THE TRANSPORT, so it
 // catches every caller (this file, notes.js, all of api.js) without
 // changing api.js beyond its one key-reading edit. Only PROXY_URL requests
-// are inspected, and only small { ok:false } bodies are matched, so normal
-// replies — including multi-megabyte recording audio — pass through
-// untouched.
+// are inspected, and only the FIRST chunk of the reply is read: the real
+// rejection is the tiny top-level {"ok":false,"error":"unauthorized"} body
+// (confirmed against the live backend), parsed and matched EXACTLY — so a
+// successful reply that merely contains a failed-tool event or the word
+// "unauthorized" in Sharon's own text never trips the gate, and a
+// multi-megabyte recording reply is never buffered twice (its first chunk
+// won't parse as JSON, which already rules it out).
 const nativeFetch = window.fetch.bind(window);
 window.fetch = async (input, init) => {
   const res = await nativeFetch(input, init);
   const url = typeof input === "string" ? input : (input && input.url) || "";
   if (url === PROXY_URL) {
     try {
-      const len = Number(res.headers.get("content-length") || 0);
-      if (len < 4096) {
-        const raw = await res.clone().text();
-        if (raw.length < 4096 && raw.indexOf('"ok":false') !== -1 && /unauthorized/i.test(raw)) {
-          onAuthRejected();
+      let data = null;
+      try {
+        data = JSON.parse(await readReplyHead(res));
+      } catch (_) {
+        data = null; // partial/large body — never a rejection
+      }
+      if (data && data.ok === false && String(data.error || "").trim().toLowerCase() === "unauthorized") {
+        // A reply to a request sent with an already-replaced key must not
+        // wipe the key the user JUST re-entered (an un-abortable voice-memo
+        // upload can land long after a re-unlock) — only act when the
+        // rejected request carried the key that is stored right now.
+        let sentKey = null;
+        try {
+          sentKey = init && typeof init.body === "string" ? (JSON.parse(init.body) || {}).api_key : null;
+        } catch (_) {
+          sentKey = null;
         }
+        if (sentKey == null || sentKey === getApiKey()) onAuthRejected();
       }
     } catch (_) {
       /* not ours to judge — api.js reports the real error */
@@ -166,6 +197,20 @@ window.fetch = async (input, init) => {
   }
   return res;
 };
+
+// The first chunk of a cloned reply as bounded text — plenty for the
+// backend's whole rejection body, without ever buffering a full reply.
+async function readReplyHead(res) {
+  const clone = res.clone();
+  if (clone.body && clone.body.getReader) {
+    const reader = clone.body.getReader();
+    const { value } = await reader.read();
+    reader.cancel().catch(() => {});
+    return value ? new TextDecoder().decode(value.subarray(0, 2048)) : "";
+  }
+  const raw = await clone.text();
+  return raw.slice(0, 2048);
+}
 
 /* ------------------------------------------------------------------ *
  * Settings
@@ -2274,10 +2319,15 @@ function wireControls() {
 
   refreshMemoryCount();
 
-  // Restore the conversation thread from the Sheet so a reloaded page
-  // remembers what you were talking about (best-effort, non-blocking).
+  await restoreThread();
+})();
+
+// Restore the conversation thread from the Sheet so a reloaded page
+// remembers what you were talking about (best-effort, non-blocking). Also
+// re-run after a re-unlock, when the boot attempt failed with the old key.
+async function restoreThread() {
   try {
-    const turns = await api.getRecentTurns(sessionId, HISTORY_TURNS);
+    const turns = await api.getRecentTurns(await ensureSessionId(), HISTORY_TURNS);
     markSetup("memory");
     if (Array.isArray(turns) && !history.length) {
       for (const t of turns) {
@@ -2287,4 +2337,4 @@ function wireControls() {
   } catch (_) {
     /* fine — she just starts fresh; setup shows what to check */
   }
-})();
+}
