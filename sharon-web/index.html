@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en" data-view="chat" data-phase="listening" data-capture="idle" data-mic="live" data-voice="on" data-mode="listening">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sharon</title>
+    <link rel="icon" href="icons/icon128.png" />
+    <link rel="stylesheet" href="tokens.css" />
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <div class="panel">
+      <!-- ================= Header (persistent) ================= -->
+      <header class="hdr">
+        <div class="hd-id">
+          <span class="avatar" aria-hidden="true">S</span>
+          <div class="hd-txt">
+            <div class="name">Sharon</div>
+            <button class="status" id="statusLine" type="button" aria-live="polite" aria-label="Sharon's status">
+              <span class="st-dot" aria-hidden="true"></span>
+              <span id="statusText">Listening — just talk</span>
+              <span class="st-eq" aria-hidden="true"><span></span><span></span><span></span></span>
+            </button>
+          </div>
+        </div>
+        <div class="hd-actions">
+          <!-- Persistent recording indicator — visible from EVERY tab while a
+               voice or screen recording is running, because a recording now
+               keeps going while you browse the other tabs. Tapping it jumps to
+               the Audio or Video tab (navigation only; the recording is never
+               touched). It disappears the moment recording stops. -->
+          <button class="recpill hidden" id="recPill" type="button" data-kind="audio" aria-label="Recording — go to the recording">
+            <span class="rp-dot" aria-hidden="true"></span>
+            <span class="rp-l" id="recPillLabel">Recording</span>
+            <span class="rp-t" id="recPillTimer">00:00</span>
+          </button>
+          <!-- Mute lives in the header, not in the tab bar: it's a permanent
+               on/off state, not a destination, and it must be reachable from
+               every tab. The mic glyph now means ONLY mute. -->
+          <button class="hd-btn" id="micBtn" type="button" aria-label="Microphone is on — tap to mute" aria-pressed="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><path d="M12 18v4"/></svg>
+            <span class="m-slash" aria-hidden="true"></span>
+          </button>
+          <button class="hd-btn" id="settingsBtn" type="button" aria-label="Settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.16.55.62.96 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- The page-awareness pill lived here in the extension ("Seeing this
+           tab" / "look at this tab"). A web page cannot read the browser's
+           other tabs, so the pill, its mode and its settings are gone rather
+           than faked. -->
+
+      <!-- ================= Live-presence card ================= -->
+      <div class="live-card" id="liveCard">
+        <div class="lc-row">
+          <span class="wave" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></span>
+          <span class="lc-label" id="lcLabel">Listening — just talk</span>
+          <button class="lc-mute" id="lcMute" type="button">Mute</button>
+        </div>
+        <div class="lc-transcript hidden" id="lcTranscript" aria-live="polite">
+          <span id="lcText"></span><span class="caret" aria-hidden="true"></span>
+        </div>
+        <button class="lc-strip hidden" id="lcStrip" type="button">
+          <span>Sending — tap to edit first</span>
+          <span class="lc-bar" aria-hidden="true"><span id="lcBarFill"></span></span>
+        </button>
+        <div class="lc-edit hidden" id="lcEdit">
+          <textarea id="lcEditArea" rows="2" aria-label="Edit what I heard"></textarea>
+          <div class="lc-edit-row">
+            <button class="pill-btn primary" id="lcSend" type="button">Send</button>
+            <button class="pill-btn" id="lcDiscard" type="button">Discard</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= Thread ================= -->
+      <div class="thread" id="thread">
+        <div class="empty-state" id="emptyState">Nothing here yet — I'm listening. Ask me something, save a thought, or find an old note.</div>
+      </div>
+
+      <!-- ================= Library view =================
+           Today's memory view, reused as-is under the Library tab: the search
+           box, the filter pills, the select / multi-select bar, the action bar
+           and the synced footer are all unchanged. The back arrow is gone —
+           with real tabs there is nowhere to go "back" to. -->
+      <div class="memory" id="libraryView" role="region" aria-label="Library — everything saved">
+        <div class="mem-head">
+          <div class="mem-hd-txt">
+            <div class="mem-title">Library.</div>
+            <div class="mem-sub" id="memSubtitle">Everything saved to your Sheet</div>
+          </div>
+          <button class="pill-btn" id="memSelectBtn" type="button" aria-label="Select multiple items">Select</button>
+        </div>
+        <div class="mem-selbar" id="memSelBar">
+          <button class="hd-btn" id="selCancel" type="button" aria-label="Cancel selection">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+          <div class="sel-count" id="selCount" aria-live="polite">Select items</div>
+          <button class="pill-btn" id="selAllBtn" type="button" aria-label="Select everything shown under the current filter">Select all</button>
+        </div>
+        <div class="mem-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" id="memSearchInput" placeholder="Search everything I've saved…" aria-label="Search everything I've saved" />
+        </div>
+        <!-- One iOS segmented control: a single rounded gray track with the
+             selected segment raised as a white pill inside it. Every filter
+             and its behavior is unchanged — this is styling only. -->
+        <div class="mem-filters" id="memFilters" role="group" aria-label="Filter what's shown">
+          <button class="m-pill on" type="button" data-filter="all" aria-pressed="true">All</button>
+          <button class="m-pill" type="button" data-filter="notes" aria-pressed="false">Notes</button>
+          <button class="m-pill" type="button" data-filter="tasks" aria-pressed="false">Tasks</button>
+          <button class="m-pill" type="button" data-filter="done" aria-pressed="false">Done</button>
+          <button class="m-pill" type="button" data-filter="audio" aria-pressed="false">Audio</button>
+          <button class="m-pill" type="button" data-filter="video" aria-pressed="false">Video</button>
+        </div>
+        <div class="mem-list" id="memList"></div>
+        <div class="mem-actbar" id="memActBar">
+          <button class="pill-btn primary" id="selDoneBtn" type="button" aria-label="Mark the selected tasks complete" disabled>Mark complete</button>
+          <button class="pill-btn hidden" id="selReopenBtn" type="button" aria-label="Reopen the selected tasks">Reopen</button>
+          <span class="spacer" aria-hidden="true"></span>
+          <button class="pill-btn danger" id="selDeleteBtn" type="button" aria-label="Delete the selected items" disabled>Delete</button>
+        </div>
+        <div class="mem-foot">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          <span id="memSynced">Synced with your Google Sheet</span>
+        </div>
+      </div>
+
+      <!-- ================= Notes view =================
+           A sibling of the Library view, reached from the Notes tab.
+           Unchanged: the compose box, the dictation mic, the sections
+           dropdown and the editor sub-screen. The LIST's back arrow is gone
+           (the tab bar is the way out); the EDITOR keeps its back arrow,
+           because that one is a real back — editor to list. -->
+      <div class="notes" id="notesView" role="region" aria-label="Notes" data-screen="list" data-edit="off">
+        <div class="notes-screen" id="notesListScreen">
+          <!-- ONE filled primary button next to the title ("+ New note").
+               "Edit" is a plain text button beside it: it puts the list into
+               iOS-style edit mode, where every section header grows Rename
+               and Delete, and where "+ New section" lives. -->
+          <div class="mem-head">
+            <div class="mem-hd-txt">
+              <div class="mem-title">Notes.</div>
+              <div class="mem-sub" id="notesSubtitle">Saved in your Sheet</div>
+            </div>
+            <button class="txt-btn" id="noteEditBtn" type="button" aria-pressed="false" aria-label="Edit your sections">Edit</button>
+            <button class="pill-btn primary" id="noteNewBtn" type="button" aria-label="Start a new note">+ New note</button>
+          </div>
+          <div class="notes-editbar" id="notesEditBar">
+            <button class="pill-btn" id="noteNewSectionBtn" type="button" aria-label="Create a new section">+ New section</button>
+            <span class="notes-edit-hint">Rename or delete a section from its header.</span>
+          </div>
+          <div class="note-compose">
+            <textarea id="noteComposeArea" rows="3" placeholder="Paste or type a note — the first line becomes its title" aria-label="Paste or type a new note"></textarea>
+            <!-- The section picker and its dictation mic sit together on the
+                 right, with no dead space between them: pick where the note
+                 goes, then speak it. -->
+            <div class="note-compose-bar">
+              <span class="note-ed-hint hidden" id="noteComposeHint" aria-live="polite">Listening — speak and I'll type it here</span>
+              <span class="spacer" aria-hidden="true"></span>
+              <select class="sel note-sec" id="noteComposeSection" aria-label="Section for a new note"></select>
+              <button class="note-mic" id="noteComposeMic" type="button" aria-label="Dictate a new note" aria-pressed="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><path d="M12 18v4"/></svg>
+              </button>
+            </div>
+            <div class="note-compose-row hidden" id="noteComposeRow">
+              <button class="pill-btn primary" id="noteComposeSave" type="button">Save note</button>
+            </div>
+          </div>
+          <div class="notes-err hidden" id="notesStale"></div>
+          <div class="notes-err hidden" id="notesErr"></div>
+          <div class="notes-list" id="notesList"></div>
+        </div>
+        <div class="notes-screen" id="noteEditorScreen">
+          <div class="mem-head">
+            <button class="hd-btn" id="noteEdBack" type="button" aria-label="Back to your notes">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+            </button>
+            <div class="mem-hd-txt">
+              <div class="mem-title">Note.</div>
+              <div class="mem-sub" id="noteEdMeta">New note</div>
+            </div>
+            <button class="pill-btn primary" id="noteEdSave" type="button" aria-label="Save this note">Save</button>
+          </div>
+          <input class="note-ed-title" id="noteEdTitle" type="text" placeholder="Title" aria-label="Note title" />
+          <textarea class="note-ed-body" id="noteEdBody" placeholder="Write, paste, or tap the mic and dictate…" aria-label="Note text"></textarea>
+          <div class="notes-err hidden" id="noteEdErr"></div>
+          <div class="note-ed-bar">
+            <button class="note-mic" id="noteEdMic" type="button" aria-label="Dictate into this note" aria-pressed="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><path d="M12 18v4"/></svg>
+            </button>
+            <span class="note-ed-hint hidden" id="noteEdHint" aria-live="polite">Listening — speak and I'll type it here</span>
+            <span class="spacer" aria-hidden="true"></span>
+            <select class="sel note-sec" id="noteEdSection" aria-label="Section for this note"></select>
+            <button class="pill-btn" id="noteEdCopy" type="button" aria-label="Copy this note">Copy</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= Audio view (tab 4) =================
+           The ONE place voice memos start now. The big Record button carries
+           the old #recordBtn's exact behavior (same handler, same 30-minute
+           cap, same upload-and-organize flow); the live recorder card below it
+           is the same #recCard as before, just relocated onto this screen. -->
+      <div class="audio" id="audioView" role="region" aria-label="Audio — voice recordings">
+        <div class="mem-head">
+          <div class="mem-hd-txt">
+            <div class="mem-title">Audio.</div>
+            <div class="mem-sub" id="audioSubtitle">Voice recordings · saved to your Drive</div>
+          </div>
+        </div>
+        <button class="big-rec" id="recordBtn" type="button" aria-label="Record a voice memo — up to 30 minutes" aria-pressed="false">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><circle cx="12" cy="12" r="7"/></svg>
+          <span class="br-l" id="recordBtnLabel">Record</span>
+        </button>
+
+        <!-- ================= Recorder card ================= -->
+        <div class="rec-card hidden" id="recCard" data-stage="recording">
+          <div class="rc-row">
+            <span class="rc-dot" aria-hidden="true"></span>
+            <span class="rc-label" id="recLabel">Recording</span>
+            <span class="rc-timer" id="recTimer">00:00 / 30:00</span>
+            <button class="pill-btn danger" id="recStop" type="button">Stop</button>
+          </div>
+          <div class="rc-transcript hidden" id="recTranscript" aria-live="polite">
+            <span id="recText"></span>
+          </div>
+          <div class="rc-hint" id="recHint">Closing this page ends the recording.</div>
+        </div>
+
+        <div class="av-list" id="audioList"></div>
+      </div>
+
+      <!-- ================= Video view (tab 5) =================
+           The big Record-screen button carries the old #screenRecBtn's exact
+           behavior (same getDisplayMedia flow, same 30-minute cap, same
+           pause/resume) — only now the recorder runs in this page instead of a
+           background offscreen document, so recording lasts as long as this
+           tab stays open. The live card below is the
+           same #screenRecCard, relocated. The list underneath is the LOCAL
+           copy of each recording (IndexedDB, capped at 2 GB) so clips can be
+           replayed right here — the download to your computer is unchanged and
+           nothing is ever uploaded. -->
+      <div class="video" id="videoView" role="region" aria-label="Video — screen recordings">
+        <div class="mem-head">
+          <div class="mem-hd-txt">
+            <div class="mem-title">Video.</div>
+            <div class="mem-sub" id="videoSubtitle">Screen recordings · kept on this computer</div>
+          </div>
+        </div>
+        <button class="big-rec" id="screenRecBtn" type="button" aria-label="Record your screen — up to 30 minutes" aria-pressed="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="m16 10.5 5.2-3.1a.5.5 0 0 1 .8.44v8.32a.5.5 0 0 1-.8.42L16 13.5z"/></svg>
+          <span class="br-l" id="screenRecBtnLabel">Record screen</span>
+        </button>
+
+        <!-- ================= Screen-recorder card =================
+             A SEPARATE live card from the voice recorder, so the two never
+             interfere. Downloads straight to the computer — nothing here
+             touches the backend or Drive. -->
+        <div class="screenrec-card hidden" id="screenRecCard">
+          <div class="rc-row">
+            <span class="rc-dot" aria-hidden="true"></span>
+            <span class="rc-label" id="screenRecLabel">Recording your screen</span>
+            <span class="rc-timer" id="screenRecTimer">00:00 / 30:00</span>
+            <button class="pill-btn danger" id="screenRecStop" type="button">Stop</button>
+          </div>
+          <div class="rc-hint">Keep this page open while it records — stop or pause with your keyboard shortcut (Settings).</div>
+        </div>
+
+        <div class="av-quota hidden" id="videoQuota"></div>
+        <div class="av-list" id="videoList"></div>
+      </div>
+
+      <!-- ================= In-panel audio player ================= -->
+      <div class="player hidden" id="playerBar" data-state="loading" data-playing="false">
+        <button class="pl-toggle" id="plToggle" type="button" aria-label="Play">
+          <svg class="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+          <svg class="i-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v16"/><path d="M15 4v16"/></svg>
+        </button>
+        <div class="pl-mid">
+          <div class="pl-label" id="plLabel">Recording</div>
+          <div class="pl-loading" id="plLoading">Fetching the audio — a long recording takes a moment…</div>
+          <div class="pl-row">
+            <span class="pl-time" id="plCur">0:00</span>
+            <input class="pl-seek" id="plSeek" type="range" min="0" max="100" step="1" value="0" aria-label="Seek through the recording" />
+            <span class="pl-time" id="plTotal">0:00</span>
+          </div>
+        </div>
+        <a class="pl-drive" id="plDrive" target="_blank" rel="noopener noreferrer" aria-label="Open the recording in Drive" title="Open in Drive">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+        </a>
+        <button class="pl-close" id="plClose" type="button" aria-label="Close the player">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- ================= Composer ================= -->
+      <div class="composer" id="composer">
+        <input type="text" id="composerInput" placeholder="Type instead — or just talk" aria-label="Type a message to Sharon" />
+        <button class="send-btn hidden" id="sendBtn" type="button" aria-label="Send your message">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-11 11"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+        </button>
+      </div>
+
+      <!-- ================= Tab bar =================
+           Five DESTINATIONS, each with an icon and a visible label. No actions
+           live here: tapping a tab only ever changes which screen you're
+           looking at — it never starts, stops or interrupts a recording, and
+           it never changes Sharon's mode. Every glyph means exactly one thing
+           (eye = look at this tab, mic = mute, waveform = audio,
+           camcorder = video, layers = library, pencil = notes,
+           speech bubble = the conversation). Settings is NOT a tab — it stays
+           on the gear in the header. -->
+      <nav class="tabbar" id="tabBar" role="tablist" aria-label="Sharon's screens">
+        <button class="tab on" id="tabChat" type="button" role="tab" data-tab="chat" aria-selected="true" aria-label="Sharon — the conversation">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3.5 21l1.9-5.2A8.5 8.5 0 0 1 4.5 11.5 8.5 8.5 0 0 1 13 3a8.5 8.5 0 0 1 8 8.5z"/></svg>
+          <span class="tab-l">Sharon</span>
+        </button>
+        <button class="tab" id="tabLibrary" type="button" role="tab" data-tab="library" aria-selected="false" aria-label="Library — everything saved">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2.7 9 4.3-9 4.3-9-4.3z"/><path d="m3 12 9 4.3 9-4.3"/><path d="m3 16.7 9 4.3 9-4.3"/></svg>
+          <span class="tab-l">Library</span>
+          <span class="badge hidden" id="tabLibraryBadge"></span>
+        </button>
+        <button class="tab" id="tabNotes" type="button" role="tab" data-tab="notes" aria-selected="false" aria-label="Notes — write, paste and dictate notes">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>
+          <span class="tab-l">Notes</span>
+        </button>
+        <button class="tab" id="tabAudio" type="button" role="tab" data-tab="audio" aria-selected="false" aria-label="Audio — voice recordings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 10v4"/><path d="M6 6v12"/><path d="M10 3v18"/><path d="M14 7v10"/><path d="M18 5v14"/><path d="M22 10v4"/></svg>
+          <span class="tab-l">Audio</span>
+        </button>
+        <button class="tab" id="tabVideo" type="button" role="tab" data-tab="video" aria-selected="false" aria-label="Video — screen recordings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="m16 10.5 5.2-3.1a.5.5 0 0 1 .8.44v8.32a.5.5 0 0 1-.8.42L16 13.5z"/></svg>
+          <span class="tab-l">Video</span>
+        </button>
+      </nav>
+
+      <!-- ================= In-panel sheets & menus =================
+           Empty hosts that nsheet.js fills: the Rename sheet, the section
+           Delete confirmation, and the "…" popover menus. They live inside
+           the panel (a side panel has no business calling window.prompt),
+           and all of their markup is built in JavaScript — no inline script,
+           no onclick attributes anywhere. -->
+      <div class="ns-scrim" id="nsScrim"></div>
+      <div class="ns-sheet" id="nsSheet" role="dialog" aria-modal="true" aria-label="Section options"></div>
+      <div class="ns-menu hidden" id="nsMenu" role="menu"></div>
+
+      <!-- Undo toast -->
+      <div class="toast hidden" id="undoToast">
+        <span id="toastLabel">Sent what I heard</span>
+        <button class="toast-undo" id="toastUndo" type="button">Undo</button>
+      </div>
+
+      <!-- ================= First-run welcome ================= -->
+      <div class="welcome" id="welcomeView">
+        <span class="w-avatar" aria-hidden="true">S</span>
+        <h1 class="w-title">Hi, I'm Sharon.</h1>
+        <p class="w-promise">I listen while you work, keep what matters in your own Google Sheet, and answer out loud when you ask.</p>
+        <div class="w-step" id="wStepMic" data-state="active">
+          <span class="w-num" aria-hidden="true"><span class="n">1</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+          <div class="w-body">
+            <div class="w-t">Let me hear you</div>
+            <div class="w-h" id="wMicHint">Your browser will ask for the microphone — choose Allow.</div>
+          </div>
+          <button class="pill-btn primary w-act" id="wAllowBtn" type="button">Allow</button>
+        </div>
+        <div class="w-step" id="wStepMemory" data-state="pending">
+          <span class="w-num" aria-hidden="true"><span class="n">2</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+          <div class="w-body">
+            <div class="w-t">Connect your memory</div>
+            <div class="w-h" id="wMemoryHint">Your notes live in your "Speaking Assistant" Sheet.</div>
+          </div>
+          <button class="pill-btn primary w-act" id="wConnectBtn" type="button">Connect</button>
+        </div>
+        <div class="w-step" id="wStepHello" data-state="pending">
+          <span class="w-num" aria-hidden="true"><span class="n">3</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+          <div class="w-body">
+            <div class="w-t">Say hello</div>
+            <div class="w-h">Drop into the conversation and just say “hello”.</div>
+          </div>
+          <button class="pill-btn primary w-act" id="wHelloBtn" type="button">Try it</button>
+        </div>
+        <p class="w-foot">Everything you say is stored only in <b>your</b> Google Sheet — nowhere else. Say “stop” any time and I go quiet.</p>
+      </div>
+
+      <!-- ================= Settings bottom sheet ================= -->
+      <div class="scrim" id="scrim"></div>
+      <div class="sheet" id="settingsSheet" role="dialog" aria-modal="true" aria-label="Settings">
+        <div class="sheet-head">
+          <div class="sheet-title">Settings.</div>
+          <button class="hd-btn" type="button" data-close aria-label="Close settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+        <div class="sheet-body">
+          <div class="sec-label">Setup</div>
+          <div class="setup-card">
+            <div class="su-row" id="suMic" data-done="false">
+              <span class="su-circle" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+              <div class="su-txt"><div class="su-name">Microphone</div><div class="su-status" id="suMicStatus">Not allowed yet</div></div>
+              <button class="pill-btn outline su-act" id="suMicBtn" type="button">Allow</button>
+            </div>
+            <div class="su-row" id="suMemory" data-done="false">
+              <span class="su-circle" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+              <div class="su-txt"><div class="su-name">Your memory</div><div class="su-status" id="suMemoryStatus">Not connected yet</div></div>
+              <button class="pill-btn outline su-act" id="suMemoryBtn" type="button">Connect</button>
+            </div>
+            <div class="su-row" id="suHello" data-done="false">
+              <span class="su-circle" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+              <div class="su-txt"><div class="su-name">First hello</div><div class="su-status" id="suHelloStatus">You two haven't met yet</div></div>
+              <button class="pill-btn outline su-act" id="suHelloBtn" type="button">Try it</button>
+            </div>
+          </div>
+
+          <!-- The page preferences the extension had — "Read pages to me
+               automatically", "Let Sharon scroll the page", "Let Sharon act on
+               the page" and "Ask me before each action" — are gone: a web page
+               can't see or touch the browser's other tabs, so there is nothing
+               for them to switch on. -->
+          <div class="sec-label">Preferences</div>
+          <div class="pref-card">
+            <div class="pref-row col">
+              <div class="pref-name">Sharon's voice</div>
+              <select class="sel" id="voiceSelect" aria-label="Sharon's voice"><option value="">Auto (best available)</option></select>
+              <select class="sel" id="voiceSpeed" aria-label="Speaking speed">
+                <option value="slow">Slow</option>
+                <option value="normal">Normal</option>
+                <option value="brisk">Brisk</option>
+              </select>
+              <button class="txt-link" id="voicePreview" type="button">&#9658; Preview voice</button>
+            </div>
+            <!-- The shortcuts are plain keydown listeners in this page now, so
+                 they work while Sharon is the focused tab and they are fixed —
+                 there is no browser shortcuts page for a web app to send you
+                 to, so the keycaps show the keys instead of offering a rebind. -->
+            <div class="pref-row">
+              <div class="pref-name">Activate Sharon</div>
+              <span class="keycap" style="cursor:default" id="shortcutValue">…</span>
+            </div>
+            <div class="pref-row">
+              <div class="pref-name">Start / stop screen recording</div>
+              <span class="keycap" style="cursor:default" id="screenRecShortcutValue">…</span>
+            </div>
+            <div class="pref-row">
+              <div class="pref-name">Pause / resume screen recording</div>
+              <span class="keycap" style="cursor:default" id="screenPauseShortcutValue">…</span>
+            </div>
+          </div>
+          <button class="txt-link center" id="replaySetup" type="button">Replay the first-run setup</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>
